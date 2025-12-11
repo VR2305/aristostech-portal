@@ -1,83 +1,85 @@
-import connectDB from "@/lib/db";
-import Task from "@/models/Task";
 import { NextResponse } from "next/server";
+import { connectToDB } from "@/lib/db";
+import Task from "@/models/Task";
 
-// 1. GET TASKS
+// GET: Fetch all tasks or filter by email
 export async function GET(req) {
   try {
-    await connectDB();
+    await connectToDB();
     const { searchParams } = new URL(req.url);
-    const email = searchParams.get("email");
+    const email = searchParams.get('email');
 
     let tasks;
-    // If email is provided, get tasks assigned to that specific user (Employee View)
     if (email) {
-      tasks = await Task.find({ assignedTo: email }).sort({ dueDate: 1 }); // Earliest deadline first
+      // Find tasks assigned to a specific user (Employee View)
+      tasks = await Task.find({ assignedTo: email }).sort({ createdAt: -1 });
     } else {
-      // If no email, get ALL tasks (Admin View)
-      tasks = await Task.find().sort({ createdAt: -1 }); // Newest created first
+      // Find ALL tasks (Admin View)
+      tasks = await Task.find({}).sort({ createdAt: -1 });
     }
 
-    return NextResponse.json(tasks);
+    return NextResponse.json(tasks, { status: 200 });
   } catch (error) {
-    console.error("Error fetching tasks:", error);
-    return NextResponse.json({ message: "Error fetching tasks" }, { status: 500 });
+    console.error("API GET ERROR:", error);
+    return NextResponse.json({ message: "Error fetching tasks", error: error.message }, { status: 500 });
   }
 }
 
-// 2. CREATE NEW TASK
+// POST: Create a new task
 export async function POST(req) {
   try {
+    await connectToDB();
     const body = await req.json();
-    await connectDB();
+    console.log("API: Creating new task:", body);
     
     const newTask = await Task.create(body);
-    
-    return NextResponse.json({ message: "Task Created Successfully", task: newTask }, { status: 201 });
+    return NextResponse.json(newTask, { status: 201 });
   } catch (error) {
-    console.error("Task Creation Error:", error);
-    return NextResponse.json({ message: "Error creating task" }, { status: 500 });
+    console.error("API POST ERROR:", error);
+    return NextResponse.json({ message: "Error creating task", error: error.message }, { status: 500 });
   }
 }
 
-// 3. UPDATE TASK (Status, Details, or Add Comment)
+// PUT: Update Task details OR Add a Comment
 export async function PUT(req) {
-  try {
-    const body = await req.json();
-    const { id, comment, ...updateData } = body; // Separate 'comment' from other updates
-    
-    await connectDB();
+    try {
+        await connectToDB();
+        const body = await req.json();
+        
+        // Destructure to separate ID, Action Type, and Data
+        const { id, type, ...updateData } = body; 
 
-    if (comment) {
-      // Case A: Adding a chat comment
-      // We use $push to append the new comment to the array
-      await Task.findByIdAndUpdate(id, { 
-        $push: { comments: comment } 
-      });
-    } else {
-      // Case B: Normal update (Status, Priority, etc.)
-      await Task.findByIdAndUpdate(id, updateData);
+        if (!id) {
+            return NextResponse.json({ message: "Task ID is required" }, { status: 400 });
+        }
+
+        let updatedTask;
+
+        if (type === 'comment') {
+            // ACTION: Add a new comment to the task
+            // We use $push to add the comment object to the 'comments' array
+            updatedTask = await Task.findByIdAndUpdate(
+                id, 
+                { $push: { comments: updateData.comment } }, 
+                { new: true }
+            );
+        } else {
+            // ACTION: Update task fields (Status, Title, Priority, etc.)
+            // updateData contains fields like { status: "Completed" } or { title: "New Title" }
+            updatedTask = await Task.findByIdAndUpdate(
+                id, 
+                updateData, 
+                { new: true }
+            );
+        }
+
+        if (!updatedTask) {
+             return NextResponse.json({ message: "Task not found" }, { status: 404 });
+        }
+
+        return NextResponse.json(updatedTask, { status: 200 });
+    } catch (error) {
+        console.error("API PUT ERROR:", error);
+        return NextResponse.json({ message: "Error updating task", error: error.message }, { status: 500 });
     }
-
-    return NextResponse.json({ message: "Task Updated" });
-  } catch (error) {
-    console.error("Task Update Error:", error);
-    return NextResponse.json({ message: "Error updating task" }, { status: 500 });
-  }
-}
-
-// 4. DELETE TASK
-export async function DELETE(req) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-    
-    await connectDB();
-    await Task.findByIdAndDelete(id);
-    
-    return NextResponse.json({ message: "Task Deleted" });
-  } catch (error) {
-    console.error("Task Deletion Error:", error);
-    return NextResponse.json({ message: "Error deleting task" }, { status: 500 });
-  }
 }

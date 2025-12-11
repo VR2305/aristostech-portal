@@ -1,60 +1,58 @@
 import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import connectDB from "@/lib/db";
+import { connectToDB } from "@/lib/db";
 import User from "@/models/User";
 import bcrypt from "bcryptjs";
 
 const handler = NextAuth({
-  session: { strategy: "jwt" },
-  secret: process.env.NEXTAUTH_SECRET,
   providers: [
     CredentialsProvider({
       name: "Credentials",
-      credentials: {},
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
       async authorize(credentials) {
+        await connectToDB();
+
         try {
-          await connectDB();
-          
-          // 1. Find user by email
           const user = await User.findOne({ email: credentials.email });
-
-          if (!user) {
-            throw new Error("No user found with this email.");
+          if (user) {
+            const isPasswordCorrect = await bcrypt.compare(
+              credentials.password,
+              user.password
+            );
+            if (isPasswordCorrect) {
+              return user;
+            }
           }
-
-          // 2. Check if password matches
-          const isValid = await bcrypt.compare(credentials.password, user.password);
-          
-          if (!isValid) {
-            throw new Error("Incorrect password.");
-          }
-
-          // 3. Return user info (this gets passed to the JWT callback)
-          return { 
-              id: user._id.toString(), 
-              name: user.name, 
-              email: user.email, 
-              role: user.role 
-          };
-        } catch (error) {
-          throw new Error(error.message);
+        } catch (err) {
+          throw new Error(err);
         }
       },
     }),
   ],
+  // --- ADD THIS CALLBACKS SECTION ---
   callbacks: {
-    // Add the "role" to the token
     async jwt({ token, user }) {
-      if (user) token.role = user.role;
+      // 1. When user first logs in, add role & other fields to the token
+      if (user) {
+        token.role = user.role;
+        token.id = user._id;
+        token.phone = user.mobile; // Passing mobile from DB to token
+      }
       return token;
     },
-    // Add the "role" to the active session so the frontend can see it
     async session({ session, token }) {
-      if (session?.user) session.user.role = token.role;
+      // 2. Pass those token fields to the client-side session
+      if (session?.user) {
+        session.user.role = token.role;
+        session.user.id = token.id;
+        session.user.phone = token.phone;
+      }
       return session;
     },
   },
-  pages: { signIn: "/" }, // If something goes wrong, go back to home page
 });
 
 export { handler as GET, handler as POST };

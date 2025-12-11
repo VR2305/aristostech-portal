@@ -1,56 +1,72 @@
-import connectDB from "@/lib/db";
-import User from "@/models/User";
 import { NextResponse } from "next/server";
+import { connectToDB } from "@/lib/db";
+import User from "@/models/User";
+import bcrypt from "bcryptjs";
 
-// 1. GET USERS
+// GET: Fetch all users
 export async function GET(req) {
-  await connectDB();
-  const { searchParams } = new URL(req.url);
-  const email = searchParams.get("email");
-
-  if (email) {
-    const user = await User.findOne({ email });
-    return NextResponse.json(user);
-  } else {
-    const users = await User.find().sort({ createdAt: -1 });
-    return NextResponse.json(users);
+  try {
+    await connectToDB();
+    const users = await User.find({}).select("-password").sort({ createdAt: -1 });
+    return NextResponse.json(users, { status: 200 });
+  } catch (error) {
+    return NextResponse.json({ message: "Error fetching users" }, { status: 500 });
   }
 }
 
-// 2. UPDATE USER (Save Task Details)
-export async function PUT(req) {
+// POST: Add a new user
+export async function POST(req) {
   try {
+    await connectToDB();
     const body = await req.json();
-    const { id, taskTitle, taskDescription, taskTimePeriod, taskStatus, name, mobile } = body;
     
-    await connectDB();
+    // Check if user exists
+    const existingUser = await User.findOne({ email: body.email });
+    if (existingUser) {
+        return NextResponse.json({ message: "User already exists" }, { status: 400 });
+    }
 
-    // Create dynamic update object
-    const updateData = {};
-    if (taskTitle) updateData.taskTitle = taskTitle;
-    if (taskDescription) updateData.taskDescription = taskDescription;
-    if (taskTimePeriod) updateData.taskTimePeriod = taskTimePeriod;
-    if (taskStatus) updateData.taskStatus = taskStatus;
-    if (name) updateData.name = name;
-    if (mobile) updateData.mobile = mobile;
-
-    await User.findByIdAndUpdate(id, updateData);
+    // Hash default password
+    const hashedPassword = await bcrypt.hash("password123", 10);
     
-    return NextResponse.json({ message: "Updated Successfully" });
+    const newUser = await User.create({ 
+        ...body, 
+        password: hashedPassword,
+        status: "Active"
+    });
+    
+    return NextResponse.json(newUser, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ message: "Error" }, { status: 500 });
+    return NextResponse.json({ message: "Error adding user", error: error.message }, { status: 500 });
   }
 }
 
-// 3. DELETE USER
-export async function DELETE(req) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-    await connectDB();
-    await User.findByIdAndDelete(id);
-    return NextResponse.json({ message: "User Deleted" });
-  } catch (error) {
-    return NextResponse.json({ message: "Error deleting user" }, { status: 500 });
-  }
+// --- THIS WAS MISSING ---
+// PUT: Update an existing user
+export async function PUT(req) {
+    try {
+        await connectToDB();
+        const body = await req.json();
+        const { id, ...updateData } = body;
+
+        if (!id) {
+            return NextResponse.json({ message: "User ID is required" }, { status: 400 });
+        }
+
+        // Find user by ID and update
+        const updatedUser = await User.findByIdAndUpdate(
+            id, 
+            updateData, 
+            { new: true } // Return the updated document
+        ).select("-password");
+
+        if (!updatedUser) {
+            return NextResponse.json({ message: "User not found" }, { status: 404 });
+        }
+
+        return NextResponse.json(updatedUser, { status: 200 });
+    } catch (error) {
+        console.error("Update Error:", error);
+        return NextResponse.json({ message: "Error updating user" }, { status: 500 });
+    }
 }
