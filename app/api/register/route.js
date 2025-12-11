@@ -1,4 +1,4 @@
-import { connectToDB } from "@/lib/db"; // <--- FIXED: Use named import with curly braces
+import { connectToDB } from "@/lib/db"; // <--- FIXED: Added curly braces
 import User from "@/models/User";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
@@ -11,7 +11,7 @@ export async function POST(req) {
     const body = await req.json();
     const { name, email, password, mobile, dob, role } = body;
 
-    console.log("Received Data:", { name, email, role });
+    console.log("Received Data:", { name, email, role }); // Log received data (password hidden)
 
     // 2. Validate Fields
     if (!name || !email || !password || !mobile || !dob) {
@@ -21,7 +21,7 @@ export async function POST(req) {
 
     // 3. Connect to Database
     console.log("Attempting to connect to MongoDB...");
-    await connectToDB(); // <--- FIXED: Updated function name
+    await connectToDB(); // <--- FIXED: Function call updated
     console.log("✅ MongoDB Connected");
 
     // 4. Check for Existing User
@@ -50,7 +50,10 @@ export async function POST(req) {
     return NextResponse.json({ message: "User registered." }, { status: 201 });
 
   } catch (error) {
-    console.error("❌ CRITICAL SERVER ERROR:", error);
+    // --- CRITICAL DEBUGGING LINE ---
+    console.error("❌ CRITICAL SERVER ERROR:", error); 
+    
+    // Return the specific error message to the frontend so you can see it
     return NextResponse.json({ 
       message: "Internal Server Error", 
       error: error.message 

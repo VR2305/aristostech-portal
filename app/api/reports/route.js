@@ -1,4 +1,4 @@
-import connectDB from "@/lib/db";
+import { connectToDB } from "@/lib/db"; // <--- FIXED: Added curly braces
 import Report from "@/models/Report";
 import { NextResponse } from "next/server";
 
@@ -6,7 +6,8 @@ import { NextResponse } from "next/server";
 export async function POST(req) {
   try {
     const { userId, userName, date, attendance, workTitle, taskType, status } = await req.json();
-    await connectDB();
+    
+    await connectToDB(); // <--- FIXED: Updated function name
 
     const existing = await Report.findOne({ userId, date });
     if (existing) {
@@ -23,7 +24,8 @@ export async function POST(req) {
 // 2. GET REPORTS
 export async function GET(req) {
   try {
-    await connectDB();
+    await connectToDB(); // <--- FIXED: Updated function name
+    
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get("userId");
 
@@ -46,7 +48,8 @@ export async function DELETE(req) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     
-    await connectDB();
+    await connectToDB(); // <--- FIXED: Updated function name
+    
     await Report.findByIdAndDelete(id);
     
     return NextResponse.json({ message: "Report Deleted" });
